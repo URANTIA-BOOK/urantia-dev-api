@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -83,7 +84,14 @@ async function seed() {
 				sponsorship: partNode.partSponsorship ?? null,
 				sortId: partNode.sortId,
 			})
-			.onConflictDoNothing();
+			.onConflictDoUpdate({
+				target: parts.id,
+				set: {
+					title: sql`excluded.title`,
+					sponsorship: sql`excluded.sponsorship`,
+					sortId: sql`excluded.sort_id`,
+				},
+			});
 		console.log(`  Inserted part ${partNode.partId}: ${partNode.partTitle}`);
 	}
 
@@ -110,7 +118,14 @@ async function seed() {
 					labels: paperNode.labels ?? [],
 					video: videoManifest[paperNode.paperId] ?? null,
 				})
-				.onConflictDoNothing();
+				.onConflictDoUpdate({
+					target: papers.id,
+					set: {
+						title: sql`excluded.title`,
+						labels: sql`excluded.labels`,
+						sortId: sql`excluded.sort_id`,
+					},
+				});
 			totalPapers++;
 		}
 
@@ -127,7 +142,13 @@ async function seed() {
 						globalId: sn.globalId,
 						sortId: sn.sortId,
 					})
-					.onConflictDoNothing();
+					.onConflictDoUpdate({
+						target: sections.id,
+						set: {
+							title: sql`excluded.title`,
+							sortId: sql`excluded.sort_id`,
+						},
+					});
 				totalSections++;
 			}
 		}
@@ -162,7 +183,16 @@ async function seed() {
 
 		for (let i = 0; i < paraValues.length; i += 500) {
 			const batch = paraValues.slice(i, i + 500);
-			await db.insert(paragraphs).values(batch).onConflictDoNothing();
+			await db.insert(paragraphs).values(batch).onConflictDoUpdate({
+				target: paragraphs.id,
+				set: {
+					text: sql`excluded.text`,
+					htmlText: sql`excluded.html_text`,
+					paperTitle: sql`excluded.paper_title`,
+					sectionTitle: sql`excluded.section_title`,
+					labels: sql`excluded.labels`,
+				},
+			});
 		}
 
 		totalParagraphs += paraValues.length;
