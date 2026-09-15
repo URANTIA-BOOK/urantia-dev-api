@@ -105,7 +105,7 @@ export async function applyEntityTranslations<T extends { id: string; name: stri
 /**
  * Overlay translated paper/section titles onto results that have paperTitle/sectionTitle.
  */
-export async function applyTitleTranslations<T extends { paperId: string; paperTitle: string; sectionTitle: string | null }>(
+export async function applyTitleTranslations<T extends { paperId: string; paperTitle: string; sectionId?: string | null; sectionTitle: string | null }>(
 	db: any,
 	paragraphs: T[],
 	lang: string,
@@ -114,8 +114,16 @@ export async function applyTitleTranslations<T extends { paperId: string; paperT
 		return paragraphs;
 	}
 
-	// Collect unique paper and section IDs
 	const paperIds = [...new Set(paragraphs.map((p) => p.paperId))];
+	const sectionIds = [
+		...new Set(
+			paragraphs.map((p) =>
+				p.sectionId ? `${p.paperId}.${p.sectionId}` : null,
+			),
+		),
+	].filter((id): id is string => Boolean(id));
+	const sourceIds = [...paperIds, ...sectionIds];
+	if (sourceIds.length === 0) return paragraphs;
 
 	const translations = await db
 		.select({
@@ -126,7 +134,7 @@ export async function applyTitleTranslations<T extends { paperId: string; paperT
 		.from(titleTranslations)
 		.where(
 			and(
-				sql`${titleTranslations.sourceId} IN (${sql.join(paperIds.map((id) => sql`${id}`), sql`, `)})`,
+				sql`${titleTranslations.sourceId} IN (${sql.join(sourceIds.map((id) => sql`${id}`), sql`, `)})`,
 				eq(titleTranslations.language, lang),
 			),
 		);
@@ -138,6 +146,10 @@ export async function applyTitleTranslations<T extends { paperId: string; paperT
 
 	return paragraphs.map((p) => {
 		const paperTitle = titleMap.get(`paper:${p.paperId}`) ?? p.paperTitle;
-		return { ...p, paperTitle };
+		const sectionKey = p.sectionId ? `section:${p.paperId}.${p.sectionId}` : null;
+		const sectionTitle = sectionKey
+			? (titleMap.get(sectionKey) ?? p.sectionTitle)
+			: p.sectionTitle;
+		return { ...p, paperTitle, sectionTitle };
 	});
 }
