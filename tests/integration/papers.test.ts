@@ -263,3 +263,14 @@ describe("GET /papers/:id/sections", () => {
 		expect(res.status).toBe(404);
 	});
 });
+
+describe("GET /papers/:id?lang=", () => {
+	it("accepts lang=es without failing", async () => {
+		const res = await get("/papers/1?lang=es");
+		expect(res.status).toBe(200);
+		const { data } = await res.json();
+		expect(data.paper).toBeDefined();
+		expect(data.paragraphs).toBeArray();
+		expect(data.paragraphs.length).toBeGreaterThan(0);
+	});
+});
