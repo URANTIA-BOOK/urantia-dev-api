@@ -11,6 +11,7 @@ import {
 } from "../lib/entities.ts";
 import { problemJson } from "../lib/errors.ts";
 import {
+	applyPaperTitles,
 	applyParagraphTranslations,
 	applyTitleTranslations,
 } from "../lib/translations.ts";
@@ -33,7 +34,7 @@ const listPapersRoute = createRoute({
 	tags: ["Papers"],
 	summary: "List all 197 papers",
 	description:
-		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.",
+		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official paper titles when they have been seeded.",
 	request: {
 		query: IncludeQuery,
 	},
@@ -51,19 +52,23 @@ const listPapersRoute = createRoute({
 
 papersRoute.openapi(listPapersRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
-	const { include } = c.req.valid("query");
+	const { include, lang } = c.req.valid("query");
 
-	const allPapers = await db
-		.select({
-			id: papers.id,
-			partId: papers.partId,
-			title: papers.title,
-			sortId: papers.sortId,
-			labels: papers.labels,
-			video: papers.video,
-		})
-		.from(papers)
-		.orderBy(papers.sortId);
+	const allPapers = await applyPaperTitles(
+		db,
+		await db
+			.select({
+				id: papers.id,
+				partId: papers.partId,
+				title: papers.title,
+				sortId: papers.sortId,
+				labels: papers.labels,
+				video: papers.video,
+			})
+			.from(papers)
+			.orderBy(papers.sortId),
+		lang ?? "eng",
+	);
 
 	if (wantsTopEntities(include)) {
 		// Fetch all paragraphs across all papers in a single query, enrich with

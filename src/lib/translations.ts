@@ -153,3 +153,31 @@ export async function applyTitleTranslations<T extends { paperId: string; paperT
 		return { ...p, paperTitle, sectionTitle };
 	});
 }
+
+/**
+ * Overlay translated paper titles onto paper rows (TOC / paper list).
+ */
+export async function applyPaperTitles<T extends { id: string; title: string }>(
+	db: any,
+	paperRows: T[],
+	lang: string,
+): Promise<T[]> {
+	if (!lang || lang === "eng" || paperRows.length === 0) {
+		return paperRows;
+	}
+	const translated = await applyTitleTranslations(
+		db,
+		paperRows.map((paper) => ({
+			paperId: paper.id,
+			paperTitle: paper.title,
+			sectionId: null,
+			sectionTitle: null,
+		})),
+		lang,
+	);
+	const titles = new Map(translated.map((row) => [row.paperId, row.paperTitle]));
+	return paperRows.map((paper) => {
+		const title = titles.get(paper.id);
+		return title ? { ...paper, title } : paper;
+	});
+}
