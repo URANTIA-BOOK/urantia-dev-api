@@ -165,7 +165,10 @@ bun scripts/run-fts-setup.ts
 # Generate audio manifest (requires ../urantia-hub-api)
 bun run generate-manifest
 
-# Seed database from urantia-papers-json
+# Prove companions load (no database)
+bun run seed:dry-run
+
+# Seed database from the language tree (BOOK_TREE / ../../URANTIA/source)
 bun run seed
 
 # Start dev server (hot reload)
@@ -198,7 +201,7 @@ bun run deploy
 
 ## Data
 
-Content sourced from [urantia-papers-json](https://github.com/nicholasgasior/urantia-papers-json) — 197 papers, 1,626 sections, 14,500+ paragraphs with audio narration via [cdn.urantia.dev](https://cdn.urantia.dev/audio/eng/papers/1.mp3).
+Book text is sourced from the language trees produced by [URANTIA-BOOK/pipeline](https://github.com/URANTIA-BOOK/pipeline) (JSON companions beside each paper). Audio is served from [cdn.urantia.dev](https://cdn.urantia.dev/audio/eng/papers/1.mp3). See [DATA_PIPELINE.md](DATA_PIPELINE.md).
 
 ## License
 
