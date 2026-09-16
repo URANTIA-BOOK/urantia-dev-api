@@ -255,7 +255,7 @@ export const titleTranslations = pgTable(
 	"title_translations",
 	{
 		id: text("id").primaryKey(), // "{sourceType}:{sourceId}:{lang}:v{version}"
-		sourceType: text("source_type").notNull(), // "paper" | "section"
+		sourceType: text("source_type").notNull(), // "paper" | "section" | "part" | "partSponsorship"
 		sourceId: text("source_id").notNull(), // paper.id or section.id
 		language: text("language").notNull(),
 		version: integer("version").notNull().default(1),

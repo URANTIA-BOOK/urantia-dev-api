@@ -11,6 +11,11 @@ import {
 } from "../lib/entities.ts";
 import { problemJson } from "../lib/errors.ts";
 import {
+	applyPaperTitles,
+	applyParagraphTranslations,
+	applyTitleTranslations,
+} from "../lib/translations.ts";
+import {
 	ErrorResponse,
 	IncludeQuery,
 	PaperDetailResponse,
@@ -29,7 +34,7 @@ const listPapersRoute = createRoute({
 	tags: ["Papers"],
 	summary: "List all 197 papers",
 	description:
-		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.",
+		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official paper titles when they have been seeded.",
 	request: {
 		query: IncludeQuery,
 	},
@@ -47,19 +52,23 @@ const listPapersRoute = createRoute({
 
 papersRoute.openapi(listPapersRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
-	const { include } = c.req.valid("query");
+	const { include, lang } = c.req.valid("query");
 
-	const allPapers = await db
-		.select({
-			id: papers.id,
-			partId: papers.partId,
-			title: papers.title,
-			sortId: papers.sortId,
-			labels: papers.labels,
-			video: papers.video,
-		})
-		.from(papers)
-		.orderBy(papers.sortId);
+	const allPapers = await applyPaperTitles(
+		db,
+		await db
+			.select({
+				id: papers.id,
+				partId: papers.partId,
+				title: papers.title,
+				sortId: papers.sortId,
+				labels: papers.labels,
+				video: papers.video,
+			})
+			.from(papers)
+			.orderBy(papers.sortId),
+		lang ?? "eng",
+	);
 
 	if (wantsTopEntities(include)) {
 		// Fetch all paragraphs across all papers in a single query, enrich with
@@ -98,7 +107,7 @@ const getPaperRoute = createRoute({
 	tags: ["Papers"],
 	summary: "Get a paper with all its paragraphs",
 	description:
-		"Returns a single paper's metadata along with all its paragraphs in order. Paper IDs range from 0 (Foreword) to 196.\n\nUse `?include=entities` to include typed entity mentions in each paragraph.",
+		"Returns a single paper's metadata along with all its paragraphs in order. Paper IDs range from 0 (Foreword) to 196.\n\nUse `?include=entities` to include typed entity mentions in each paragraph.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official translation companions when they have been seeded.",
 	request: {
 		params: PaperIdParam,
 		query: IncludeQuery,
@@ -122,7 +131,7 @@ const getPaperRoute = createRoute({
 papersRoute.openapi(getPaperRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { id } = c.req.valid("param");
-	const { include } = c.req.valid("query");
+	const { include, lang } = c.req.valid("query");
 
 	const paper = await db
 		.select({
@@ -169,22 +178,26 @@ papersRoute.openapi(getPaperRoute, async (c) => {
 	const needEntities = wantsEntities(include);
 	const needTopEntities = needEntities || wantsTopEntities(include);
 
+	let responseParagraphs = paperParagraphs;
+	let paperRow = paper[0]!;
+
+	if (lang && lang !== "eng") {
+		responseParagraphs = await applyParagraphTranslations(db, responseParagraphs, lang);
+		responseParagraphs = await applyTitleTranslations(db, responseParagraphs, lang);
+		const translatedTitle = responseParagraphs[0]?.paperTitle;
+		if (translatedTitle) {
+			paperRow = { ...paperRow, title: translatedTitle };
+		}
+	}
+
 	if (needTopEntities) {
-		// Enrich paragraphs with entities so we can aggregate paper-level topEntities.
-		// If the caller asked only for topEntities (not entities), we keep the
-		// paragraphs free of the entity mentions array to reduce payload size.
-		const enriched = await enrichWithEntities(db, paperParagraphs);
+		const enriched = await enrichWithEntities(db, responseParagraphs);
 		const topEntities = aggregateTopEntities(enriched);
-
-		const responseParagraphs = needEntities
-			? enriched
-			: paperParagraphs;
-
 		return c.json(
 			{
 				data: {
-					paper: { ...paper[0]!, topEntities },
-					paragraphs: responseParagraphs,
+					paper: { ...paperRow, topEntities },
+					paragraphs: needEntities ? enriched : responseParagraphs,
 				},
 			},
 			200,
@@ -194,8 +207,8 @@ papersRoute.openapi(getPaperRoute, async (c) => {
 	return c.json(
 		{
 			data: {
-				paper: paper[0]!,
-				paragraphs: paperParagraphs,
+				paper: paperRow,
+				paragraphs: responseParagraphs,
 			},
 		},
 		200,

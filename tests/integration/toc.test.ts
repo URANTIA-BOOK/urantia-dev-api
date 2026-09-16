@@ -36,4 +36,12 @@ describe("GET /toc", () => {
 			}
 		}
 	});
+
+	it("accepts lang=es without failing", async () => {
+		const res = await get("/toc?lang=es");
+		expect(res.status).toBe(200);
+		const { parts } = (await res.json()).data;
+		expect(parts).toBeArray();
+		expect(parts.length).toBeGreaterThan(0);
+	});
 });

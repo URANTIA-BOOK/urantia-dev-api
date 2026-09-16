@@ -2,7 +2,8 @@ import { createRoute } from "@hono/zod-openapi";
 import { getDb } from "../db/client.ts";
 import { papers, parts } from "../db/schema.ts";
 import { createApp } from "../lib/app.ts";
-import { ErrorResponse, TocResponse } from "../validators/schemas.ts";
+import { applyPaperTitles, applyPartOverlays } from "../lib/translations.ts";
+import { ErrorResponse, LangQuery, TocResponse } from "../validators/schemas.ts";
 
 export const tocRoute = createApp();
 
@@ -13,7 +14,10 @@ const getTocRoute = createRoute({
 	tags: ["Table of Contents"],
 	summary: "Get the full table of contents",
 	description:
-		"Returns the complete table of contents with parts and their papers. This is typically the first endpoint an AI agent should call to understand the book structure.",
+		"Returns the complete table of contents with parts and their papers. This is typically the first endpoint an AI agent should call to understand the book structure.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official part titles, sponsorship, and paper titles from that language tree's metadata.json when they have been seeded.",
+	request: {
+		query: LangQuery,
+	},
 	responses: {
 		200: {
 			description: "Table of contents",
@@ -28,16 +32,19 @@ const getTocRoute = createRoute({
 
 tocRoute.openapi(getTocRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
+	const { lang } = c.req.valid("query");
 
-	const allParts = await db
-		.select()
-		.from(parts)
-		.orderBy(parts.sortId);
+	const allParts = await applyPartOverlays(
+		db,
+		await db.select().from(parts).orderBy(parts.sortId),
+		lang ?? "eng",
+	);
 
-	const allPapers = await db
-		.select()
-		.from(papers)
-		.orderBy(papers.sortId);
+	const allPapers = await applyPaperTitles(
+		db,
+		await db.select().from(papers).orderBy(papers.sortId),
+		lang ?? "eng",
+	);
 
 	const tocParts = allParts.map((part) => ({
 		id: part.id,

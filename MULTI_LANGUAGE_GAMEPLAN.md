@@ -1,8 +1,19 @@
 # Plan: Multi-Language Support for Urantia Papers API
 
+## Official language trees first
+
+Foundation editions already exist as pipeline language repos (`make langs-run`
+in [URANTIA-BOOK/pipeline](https://github.com/URANTIA-BOOK/pipeline)). Those
+companions are the source of truth for published book text. AI-generated
+overlays in `data/translations/` must not replace an official edition.
+
+Seed English (and, once `globalId` is unique per language, other official
+trees) from `BOOK_TREE`. Use AI translation only for languages the Foundation
+has not published.
+
 ## Context
 
-The API currently serves only English content. We want to add multi-language support with AI-generated translations. The urantiapedia repo has existing translations but we can't use them (copyright). We'll generate our own translations from the English source text using AI models.
+The API currently serves only English content. We want to add multi-language support. Official translations come from the pipeline language trees. For languages without a Foundation edition, generate AI overlays from the English source text. The urantiapedia repo has existing translations but we can't use them (copyright).
 
 **Priority languages (top 5 by Urantia Book readership):** Spanish (es), French (fr), Portuguese (pt), German (de), Korean (ko)
 

@@ -1,182 +1,216 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { sql } from "drizzle-orm";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { paragraphs, papers, parts, sections } from "../src/db/schema.ts";
-import type { RawJsonNode } from "../src/types/node.ts";
+import {
+	loadBook,
+	paragraphBodies,
+	resolveBookSource,
+	sortedPaperIds,
+	summarizeBook,
+} from "./load-book.ts";
+
+const DRY_RUN = process.argv.includes("--dry-run");
 
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL environment variable is required");
-  process.exit(1);
+if (!DATABASE_URL && !DRY_RUN) {
+	console.error("DATABASE_URL environment variable is required (skip with --dry-run)");
+	process.exit(1);
 }
 
-const DATA_DIR =
-  process.env.DATA_DIR ??
-  join(import.meta.dir, "../../urantia-data-sources/data/json/eng");
+const BOOK_SOURCE = resolveBookSource();
 
 const MANIFEST_PATH =
-  process.env.AUDIO_MANIFEST ??
-  join(import.meta.dir, "../data/audio-manifest.json");
+	process.env.AUDIO_MANIFEST ??
+	join(import.meta.dir, "../data/audio-manifest.json");
 
 const VIDEO_MANIFEST_PATH =
-  process.env.VIDEO_MANIFEST ??
-  join(import.meta.dir, "../data/video-manifest.json");
+	process.env.VIDEO_MANIFEST ??
+	join(import.meta.dir, "../data/video-manifest.json");
 
-let audioManifest: Record<string, Record<string, Record<string, { format: string; url: string }>>> = {};
+let audioManifest: Record<
+	string,
+	Record<string, Record<string, { format: string; url: string }>>
+> = {};
 if (existsSync(MANIFEST_PATH)) {
-  audioManifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
-  console.log(`Audio manifest loaded: ${Object.keys(audioManifest).length} paragraphs`);
+	audioManifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
+	console.log(`Audio manifest loaded: ${Object.keys(audioManifest).length} paragraphs`);
 } else {
-  console.warn(`Audio manifest not found at ${MANIFEST_PATH} — audio will be null`);
+	console.warn(`Audio manifest not found at ${MANIFEST_PATH} — audio will be null`);
 }
 
-let videoManifest: Record<string, Record<string, { mp4: string; thumbnail: string; duration: number }>> = {};
+let videoManifest: Record<
+	string,
+	Record<string, { mp4: string; thumbnail: string; duration: number }>
+> = {};
 if (existsSync(VIDEO_MANIFEST_PATH)) {
-  videoManifest = JSON.parse(readFileSync(VIDEO_MANIFEST_PATH, "utf-8"));
-  console.log(`Video manifest loaded: ${Object.keys(videoManifest).length} papers`);
+	videoManifest = JSON.parse(readFileSync(VIDEO_MANIFEST_PATH, "utf-8"));
+	console.log(`Video manifest loaded: ${Object.keys(videoManifest).length} papers`);
 } else {
-  console.warn(`Video manifest not found at ${VIDEO_MANIFEST_PATH} — video will be null`);
+	console.warn(`Video manifest not found at ${VIDEO_MANIFEST_PATH} — video will be null`);
 }
-
-const client = postgres(DATABASE_URL);
-const db = drizzle(client);
 
 async function seed() {
-  console.log(`Seeding from: ${DATA_DIR}`);
+	const book = loadBook(BOOK_SOURCE);
+	const summary = summarizeBook(book);
 
-  // --- 1. Seed parts ---
-  console.log("\n--- Seeding parts ---");
+	console.log(`Seeding from ${book.kind}: ${book.source}`);
+	if (book.envelope) {
+		console.log(
+			`  ${book.envelope.language ?? "?"} ${book.envelope.version_id ?? ""} pipeline_version=${book.envelope.pipeline_version ?? "?"}`,
+		);
+	}
+	console.log(
+		`  indexed ${summary.parts} parts, ${summary.papers} papers, ${summary.sections} sections, ${summary.paragraphs} paragraphs, ${summary.dividers} dividers`,
+	);
 
-  // Foreword part (part 0)
-  await db
-    .insert(parts)
-    .values({
-      id: "0",
-      title: "Foreword",
-      sponsorship: null,
-      sortId: "0.000.000.000",
-    })
-    .onConflictDoNothing();
-  console.log("  Inserted part 0 (Foreword)");
+	if (DRY_RUN) {
+		console.log("\nDRY RUN — no database changes");
+		return;
+	}
 
-  // Parts 1-4
-  for (const partNum of [1, 2, 3, 4]) {
-    const filePath = join(DATA_DIR, `${partNum}-part.json`);
-    const nodes: RawJsonNode[] = JSON.parse(readFileSync(filePath, "utf-8"));
-    const partNode = nodes.find((n) => n.type === "part");
+	const client = postgres(DATABASE_URL!);
+	const db = drizzle(client);
 
-    if (partNode) {
-      await db
-        .insert(parts)
-        .values({
-          id: partNode.partId,
-          title: partNode.partTitle ?? `Part ${partNum}`,
-          sponsorship: partNode.partSponsorship ?? null,
-          sortId: partNode.sortId,
-        })
-        .onConflictDoNothing();
-      console.log(`  Inserted part ${partNode.partId}: ${partNode.partTitle}`);
-    }
-  }
+	console.log("\n--- Seeding parts ---");
+	for (const partNode of book.parts) {
+		await db
+			.insert(parts)
+			.values({
+				id: partNode.partId,
+				title: partNode.partTitle ?? `Part ${partNode.partId}`,
+				sponsorship: partNode.partSponsorship ?? null,
+				sortId: partNode.sortId,
+			})
+			.onConflictDoUpdate({
+				target: parts.id,
+				set: {
+					title: sql`excluded.title`,
+					sponsorship: sql`excluded.sponsorship`,
+					sortId: sql`excluded.sort_id`,
+				},
+			});
+		console.log(`  Inserted part ${partNode.partId}: ${partNode.partTitle}`);
+	}
 
-  // --- 2. Seed papers, sections, and paragraphs ---
-  console.log("\n--- Seeding papers, sections, and paragraphs ---");
+	console.log("\n--- Seeding papers, sections, and paragraphs ---");
 
-  const allFiles = readdirSync(DATA_DIR);
-  const paperFiles = allFiles.filter((f) => /^\d{3}\.json$/.test(f)).sort();
+	let totalPapers = 0;
+	let totalSections = 0;
+	let totalParagraphs = 0;
 
-  let totalPapers = 0;
-  let totalSections = 0;
-  let totalParagraphs = 0;
+	for (const paperId of sortedPaperIds(book)) {
+		const nodes = book.papers.get(paperId);
+		if (!nodes) continue;
 
-  for (const file of paperFiles) {
-    const filePath = join(DATA_DIR, file);
-    const nodes: RawJsonNode[] = JSON.parse(readFileSync(filePath, "utf-8"));
+		const paperNode = nodes.find((n) => n.type === "paper");
+		if (paperNode && paperNode.paperId) {
+			await db
+				.insert(papers)
+				.values({
+					id: paperNode.paperId,
+					partId: paperNode.partId,
+					title: paperNode.paperTitle ?? `Paper ${paperNode.paperId}`,
+					globalId: paperNode.globalId,
+					sortId: paperNode.sortId,
+					labels: paperNode.labels ?? [],
+					video: videoManifest[paperNode.paperId] ?? null,
+				})
+				.onConflictDoUpdate({
+					target: papers.id,
+					set: {
+						title: sql`excluded.title`,
+						labels: sql`excluded.labels`,
+						sortId: sql`excluded.sort_id`,
+					},
+				});
+			totalPapers++;
+		}
 
-    // Insert paper node
-    const paperNode = nodes.find((n) => n.type === "paper");
-    if (paperNode && paperNode.paperId) {
-      await db
-        .insert(papers)
-        .values({
-          id: paperNode.paperId,
-          partId: paperNode.partId,
-          title: paperNode.paperTitle ?? `Paper ${paperNode.paperId}`,
-          globalId: paperNode.globalId,
-          sortId: paperNode.sortId,
-          labels: paperNode.labels ?? [],
-          video: videoManifest[paperNode.paperId] ?? null,
-        })
-        .onConflictDoNothing();
-      totalPapers++;
-    }
+		const sectionNodes = nodes.filter((n) => n.type === "section");
+		for (const sn of sectionNodes) {
+			if (sn.paperSectionId) {
+				await db
+					.insert(sections)
+					.values({
+						id: sn.paperSectionId,
+						paperId: sn.paperId!,
+						sectionId: sn.sectionId!,
+						title: sn.sectionTitle ?? null,
+						globalId: sn.globalId,
+						sortId: sn.sortId,
+					})
+					.onConflictDoUpdate({
+						target: sections.id,
+						set: {
+							title: sql`excluded.title`,
+							sortId: sql`excluded.sort_id`,
+						},
+					});
+				totalSections++;
+			}
+		}
 
-    // Insert section nodes
-    const sectionNodes = nodes.filter((n) => n.type === "section");
-    for (const sn of sectionNodes) {
-      if (sn.paperSectionId) {
-        await db
-          .insert(sections)
-          .values({
-            id: sn.paperSectionId,
-            paperId: sn.paperId!,
-            sectionId: sn.sectionId!,
-            title: sn.sectionTitle ?? null,
-            globalId: sn.globalId,
-            sortId: sn.sortId,
-          })
-          .onConflictDoNothing();
-        totalSections++;
-      }
-    }
+		const paraValues = [];
+		for (const p of nodes) {
+			if (p.type !== "paragraph") continue;
+			const bodies = paragraphBodies(p);
+			if (!bodies) continue;
+			if (!p.standardReferenceId || !p.paperSectionParagraphId || !p.paragraphId) {
+				continue;
+			}
+			paraValues.push({
+				id: p.globalId,
+				globalId: p.globalId,
+				standardReferenceId: p.standardReferenceId,
+				paperSectionParagraphId: p.paperSectionParagraphId,
+				sortId: p.sortId,
+				paperId: p.paperId!,
+				sectionId: p.paperSectionId ?? null,
+				partId: p.partId,
+				paperTitle: p.paperTitle ?? "",
+				sectionTitle: p.sectionTitle ?? null,
+				paragraphId: p.paragraphId,
+				language: p.language ?? "eng",
+				text: bodies.text,
+				htmlText: bodies.htmlText,
+				labels: p.labels ?? [],
+				audio: audioManifest[p.globalId] ?? null,
+			});
+		}
 
-    // Insert paragraph nodes in batches
-    const paraNodes = nodes.filter(
-      (n) => n.type === "paragraph" && n.text && n.htmlText,
-    );
+		for (let i = 0; i < paraValues.length; i += 500) {
+			const batch = paraValues.slice(i, i + 500);
+			await db.insert(paragraphs).values(batch).onConflictDoUpdate({
+				target: paragraphs.id,
+				set: {
+					text: sql`excluded.text`,
+					htmlText: sql`excluded.html_text`,
+					paperTitle: sql`excluded.paper_title`,
+					sectionTitle: sql`excluded.section_title`,
+					labels: sql`excluded.labels`,
+				},
+			});
+		}
 
-    const values = paraNodes.map((p) => ({
-      id: p.globalId,
-      globalId: p.globalId,
-      standardReferenceId: p.standardReferenceId!,
-      paperSectionParagraphId: p.paperSectionParagraphId!,
-      sortId: p.sortId,
-      paperId: p.paperId!,
-      sectionId: p.paperSectionId ?? null,
-      partId: p.partId,
-      paperTitle: p.paperTitle ?? "",
-      sectionTitle: p.sectionTitle ?? null,
-      paragraphId: p.paragraphId!,
-      language: p.language ?? "eng",
-      text: p.text!,
-      htmlText: p.htmlText!,
-      labels: p.labels ?? [],
-      audio: audioManifest[p.globalId] ?? null,
-    }));
+		totalParagraphs += paraValues.length;
+		console.log(
+			`  paper ${paperId}: ${paraValues.length} paragraphs, ${sectionNodes.length} sections`,
+		);
+	}
 
-    // Batch insert in chunks of 500
-    for (let i = 0; i < values.length; i += 500) {
-      const batch = values.slice(i, i + 500);
-      await db.insert(paragraphs).values(batch).onConflictDoNothing();
-    }
+	console.log("\n--- Seed complete ---");
+	console.log(`  Parts: ${book.parts.length}`);
+	console.log(`  Papers: ${totalPapers}`);
+	console.log(`  Sections: ${totalSections}`);
+	console.log(`  Paragraphs: ${totalParagraphs}`);
 
-    totalParagraphs += paraNodes.length;
-    console.log(
-      `  ${file}: ${paraNodes.length} paragraphs, ${sectionNodes.length} sections`,
-    );
-  }
-
-  console.log("\n--- Seed complete ---");
-  console.log(`  Parts: 5`);
-  console.log(`  Papers: ${totalPapers}`);
-  console.log(`  Sections: ${totalSections}`);
-  console.log(`  Paragraphs: ${totalParagraphs}`);
-
-  await client.end();
+	await client.end();
 }
 
 seed().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
+	console.error("Seed failed:", err);
+	process.exit(1);
 });

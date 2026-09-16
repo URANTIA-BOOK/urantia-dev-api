@@ -31,6 +31,10 @@ export function cacheControl(): MiddlewareHandler {
 			c.header("Cache-Control", "no-store");
 		} else if (path === "/search") {
 			c.header("Cache-Control", "public, s-maxage=3600, max-age=300");
+		} else if (path === "/toc") {
+			// Language overlays are re-seeded from metadata.json. A day-long
+			// edge cache kept stale English part titles after a language switch.
+			c.header("Cache-Control", "public, s-maxage=60, max-age=0, must-revalidate");
 		} else if (
 			path === "/" ||
 			path === "/docs" ||
