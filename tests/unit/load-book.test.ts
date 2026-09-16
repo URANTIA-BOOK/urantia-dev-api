@@ -7,6 +7,8 @@ import {
 	loadBook,
 	markdownToHtml,
 	paragraphBodies,
+	partTranslationRows,
+	readMetadataParts,
 	rowsOf,
 	summarizeBook,
 } from "../../scripts/load-book.ts";
@@ -107,9 +109,20 @@ describe("flattenMarkdown / markdownToHtml", () => {
 	});
 });
 
-const englishTree = join(import.meta.dir, "../../../URANTIA/source");
+function firstExisting(...candidates: string[]): string | null {
+	return candidates.find((path) => existsSync(join(path, "metadata.json"))) ?? null;
+}
 
-if (existsSync(join(englishTree, "metadata.json"))) {
+const englishTree = firstExisting(
+	join(import.meta.dir, "../../../URANTIA/source"),
+	"/book/eng",
+);
+const spanishTree = firstExisting(
+	join(import.meta.dir, "../../../URANTIA/langs/spanish"),
+	"/book/langs/spanish",
+);
+
+if (englishTree) {
 	describe("English pipeline tree on disk", () => {
 		it("indexes the measured companion counts", () => {
 			const summary = summarizeBook(loadBook(englishTree));
@@ -118,6 +131,40 @@ if (existsSync(join(englishTree, "metadata.json"))) {
 			expect(summary.sections).toBe(1626);
 			expect(summary.paragraphs).toBe(14586);
 			expect(summary.dividers).toBe(10);
+		});
+	});
+}
+
+if (spanishTree) {
+	describe("Spanish metadata.json part titles", () => {
+		it("reads the five edition part titles", () => {
+			const parts = readMetadataParts(spanishTree);
+			expect(parts.map((part) => [String(part.id), part.title])).toEqual([
+				["0", "Prólogo"],
+				["1", "El Universo Central y los Superuniversos"],
+				["2", "El Universo Local"],
+				["3", "La Historia de Urantia"],
+				["4", "La Vida y las Enseñanzas de Jesus"],
+			]);
+		});
+
+		it("overlays those titles onto the loaded tree, including part 0", () => {
+			const book = loadBook(spanishTree);
+			expect(
+				book.parts.map((part) => [String(part.partId), part.partTitle]),
+			).toEqual([
+				["0", "Prólogo"],
+				["1", "El Universo Central y los Superuniversos"],
+				["2", "El Universo Local"],
+				["3", "La Historia de Urantia"],
+				["4", "La Vida y las Enseñanzas de Jesus"],
+			]);
+			const rows = partTranslationRows(book);
+			expect(rows.filter((row) => row.sourceType === "part")).toHaveLength(5);
+			expect(
+				rows.find((row) => row.sourceType === "partSponsorship" && row.sourceId === "1")
+					?.title,
+			).toMatch(/Uversa/);
 		});
 	});
 }

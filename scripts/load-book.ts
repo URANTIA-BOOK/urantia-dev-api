@@ -48,6 +48,18 @@ export type CompanionEnvelope = {
 	source_file?: string;
 };
 
+export type MetadataPart = {
+	id: number | string;
+	title?: string;
+	label?: string;
+};
+
+export type PartTranslationRow = {
+	sourceType: "part" | "partSponsorship";
+	sourceId: string;
+	title: string;
+};
+
 export type IndexedBook = {
 	source: string;
 	kind: "tree" | "flat";
@@ -167,6 +179,97 @@ export function paragraphBodies(
 	return { text, htmlText };
 }
 
+export function readMetadataParts(source: string): MetadataPart[] {
+	const path = join(source, "metadata.json");
+	if (!existsSync(path)) return [];
+	let payload: unknown;
+	try {
+		payload = JSON.parse(readFileSync(path, "utf-8"));
+	} catch {
+		return [];
+	}
+	if (!payload || typeof payload !== "object") return [];
+	const parts = (payload as { parts?: unknown }).parts;
+	if (!Array.isArray(parts)) return [];
+	return parts.filter((part): part is MetadataPart => {
+		if (!part || typeof part !== "object") return false;
+		return "id" in part;
+	});
+}
+
+function metadataPartTitle(part: MetadataPart): string | null {
+	if (nonempty(part.title)) return part.title;
+	if (nonempty(part.label)) return part.label;
+	return null;
+}
+
+function partSortId(partId: string): string {
+	return `${partId}.000.000.000`;
+}
+
+/**
+ * Part titles on the language tree live in metadata.json (same contract the
+ * splitter writes). Companion `type: "part"` rows carry sponsorship; they do
+ * not always include part 0. Metadata wins for the title so TOC matches the
+ * edition the reader already uses.
+ */
+export function applyMetadataPartTitles(book: IndexedBook): IndexedBook {
+	const metaParts = readMetadataParts(book.source);
+	if (metaParts.length === 0) return book;
+
+	const byId = new Map(book.parts.map((part) => [String(part.partId), part]));
+	for (const meta of metaParts) {
+		const id = String(meta.id);
+		const title = metadataPartTitle(meta);
+		if (!title) continue;
+		const existing = byId.get(id);
+		if (existing) {
+			existing.partTitle = title;
+			continue;
+		}
+		const part: BookRow = {
+			type: "part",
+			typeRank: 0,
+			language: book.envelope?.language,
+			partId: id,
+			paperId: null,
+			sectionId: null,
+			paragraphId: null,
+			paperSectionId: null,
+			paperSectionParagraphId: null,
+			globalId: `${id}:-.-.-`,
+			standardReferenceId: null,
+			sortId: partSortId(id),
+			paperTitle: null,
+			sectionTitle: null,
+			partTitle: title,
+			partSponsorship: null,
+		};
+		book.parts.push(part);
+		byId.set(id, part);
+	}
+	book.parts.sort((a, b) => a.sortId.localeCompare(b.sortId));
+	return book;
+}
+
+export function partTranslationRows(book: IndexedBook): PartTranslationRow[] {
+	const rows: PartTranslationRow[] = [];
+	for (const part of book.parts) {
+		const id = String(part.partId);
+		if (nonempty(part.partTitle)) {
+			rows.push({ sourceType: "part", sourceId: id, title: part.partTitle });
+		}
+		if (nonempty(part.partSponsorship)) {
+			rows.push({
+				sourceType: "partSponsorship",
+				sourceId: id,
+				title: part.partSponsorship,
+			});
+		}
+	}
+	return rows;
+}
+
 export function resolveBookSource(explicit?: string | null): string {
 	if (explicit) return explicit;
 	if (process.env.BOOK_TREE) return process.env.BOOK_TREE;
@@ -239,13 +342,21 @@ export function loadBook(source = resolveBookSource()): IndexedBook {
 		}
 	}
 
-	if (!parts.some((p) => String(p.partId) === "0")) {
-		parts.unshift(FOREWORD_PART);
+	const book = applyMetadataPartTitles({
+		source,
+		kind,
+		envelope,
+		parts,
+		papers,
+	});
+
+	if (!book.parts.some((p) => String(p.partId) === "0")) {
+		book.parts.unshift(FOREWORD_PART);
 	}
 
-	parts.sort((a, b) => a.sortId.localeCompare(b.sortId));
+	book.parts.sort((a, b) => a.sortId.localeCompare(b.sortId));
 
-	return { source, kind, envelope, parts, papers };
+	return book;
 }
 
 export function summarizeBook(book: IndexedBook): BookSummary {

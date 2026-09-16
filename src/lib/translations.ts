@@ -154,6 +154,63 @@ export async function applyTitleTranslations<T extends { paperId: string; paperT
 	});
 }
 
+export type PartOverlay = {
+	sourceType: string;
+	sourceId: string;
+	title: string;
+};
+
+export function mergePartOverlays<
+	T extends { id: string; title: string; sponsorship: string | null },
+>(partRows: T[], overlays: PartOverlay[]): T[] {
+	if (overlays.length === 0) return partRows;
+	const titles = new Map<string, string>();
+	const sponsorships = new Map<string, string>();
+	for (const overlay of overlays) {
+		if (overlay.sourceType === "part") titles.set(overlay.sourceId, overlay.title);
+		if (overlay.sourceType === "partSponsorship") {
+			sponsorships.set(overlay.sourceId, overlay.title);
+		}
+	}
+	return partRows.map((part) => {
+		const title = titles.get(part.id);
+		const sponsorship = sponsorships.get(part.id);
+		if (!title && sponsorship === undefined) return part;
+		return {
+			...part,
+			...(title ? { title } : {}),
+			...(sponsorship !== undefined ? { sponsorship } : {}),
+		};
+	});
+}
+
+/**
+ * Overlay language-tree part titles and sponsorship onto TOC part rows.
+ */
+export async function applyPartOverlays<
+	T extends { id: string; title: string; sponsorship: string | null },
+>(db: any, partRows: T[], lang: string): Promise<T[]> {
+	if (!lang || lang === "eng" || partRows.length === 0) {
+		return partRows;
+	}
+	const partIds = partRows.map((part) => part.id);
+	const translations = await db
+		.select({
+			sourceType: titleTranslations.sourceType,
+			sourceId: titleTranslations.sourceId,
+			title: titleTranslations.title,
+		})
+		.from(titleTranslations)
+		.where(
+			and(
+				sql`${titleTranslations.sourceId} IN (${sql.join(partIds.map((id) => sql`${id}`), sql`, `)})`,
+				eq(titleTranslations.language, lang),
+				sql`${titleTranslations.sourceType} IN ('part', 'partSponsorship')`,
+			),
+		);
+	return mergePartOverlays(partRows, translations as PartOverlay[]);
+}
+
 /**
  * Overlay translated paper titles onto paper rows (TOC / paper list).
  */

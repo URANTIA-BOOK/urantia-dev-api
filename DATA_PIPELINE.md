@@ -9,7 +9,10 @@ and manifests still live in the **`urantia-data-sources`** Cloudflare R2 bucket.
 
 ```
 Language tree (URANTIA/source or langs/<repo>)
-└── companions (*.json beside each .md)  ──→  bun run seed  ──→  parts, papers, sections, paragraphs
+├── metadata.json parts[]                 ──→  bun run seed:tree  ──→  title_translations (part)
+└── companions (*.json beside each .md)  ──→  bun run seed        ──→  parts, papers, sections, paragraphs
+                                                                     bun run seed:tree  ──→  paragraph_translations,
+                                                                     title_translations (paper, section, partSponsorship)
 
 R2: urantia-data-sources bucket
 ├── entities/             ──→  bun run seed:entities  ──→  entities, paragraph_entities

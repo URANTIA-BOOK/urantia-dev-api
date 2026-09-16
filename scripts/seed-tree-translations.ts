@@ -18,6 +18,7 @@ import { paragraphTranslations, titleTranslations } from "../src/db/schema.ts";
 import {
 	loadBook,
 	paragraphBodies,
+	partTranslationRows,
 	resolveBookSource,
 	sortedPaperIds,
 } from "./load-book.ts";
@@ -108,6 +109,10 @@ for (const paperId of sortedPaperIds(book)) {
 			confidence: "high",
 		});
 	}
+}
+
+for (const part of partTranslationRows(book)) {
+	addTitle(part.sourceType, part.sourceId, part.title);
 }
 
 console.log(`tree: ${book.source}`);
