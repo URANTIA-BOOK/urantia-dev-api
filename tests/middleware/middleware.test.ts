@@ -39,10 +39,10 @@ describe("Cache-Control", () => {
 		expect(res.headers.get("cache-control")).toBe("no-store");
 	});
 
-	it("GET /toc has long-lived cache", async () => {
+	it("GET /toc revalidates so language overlays are not stuck", async () => {
 		const res = await get("/toc");
 		const cc = res.headers.get("cache-control");
-		expect(cc).toContain("s-maxage=86400");
-		expect(cc).toContain("stale-while-revalidate");
+		expect(cc).toContain("s-maxage=60");
+		expect(cc).toContain("max-age=0");
 	});
 });
