@@ -1,32 +1,29 @@
-# Dockerfile for local development and self-hosting.
-#
-# Canonical production deploys to Cloudflare Workers (see scripts/deploy.sh and
-# wrangler.toml). This image is for anyone who wants to run the API outside of
-# Cloudflare — local Docker dev, on-prem deploys, container-based CI, or third-
-# party MCP introspection (Glama, etc.). The server boots without a real
-# database (tools/list reads only registered tool metadata in src/routes/mcp.ts),
-# but actual tool calls require DATABASE_URL plus the other env vars listed in
-# CLAUDE.md.
+# Versioned API image for the lab conductor and self-host.
+# Canonical production deploys to Cloudflare Workers (scripts/deploy.sh).
+# Book trees are a runtime mount: /book/eng and /book/langs.
+# Dev Container uses the `dev` target (source bind-mounted at /app).
 
-FROM oven/bun:1.3-alpine
-
+FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
-
-# Install dependencies first so this layer is cached when only source changes.
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# Copy the rest of the source.
-COPY . .
-
-# The Worker reads PORT from env (defaults to 3000).
+FROM deps AS dev
+WORKDIR /app
 ENV PORT=3000
+ENV BOOK_TREE=/book/eng
 EXPOSE 3000
+CMD ["bun", "run", "dev"]
 
-# Sensible dummies for env vars that are read at handler time (not boot time).
-# Glama can override these in its build admin if it wants real introspection.
+FROM oven/bun:1.3-alpine
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock ./
+COPY . .
+ENV PORT=3000
+ENV BOOK_TREE=/book/eng
+EXPOSE 3000
 ENV DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 ENV APP_JWT_SECRET=glama-introspection-dummy-secret
 ENV ADMIN_USER_IDS=
-
 CMD ["bun", "run", "start"]
