@@ -177,6 +177,11 @@ bun run dev
 
 The server runs at `http://localhost:3000` by default.
 
+The `Dockerfile` is the versioned self-host image (`bun start`). Book trees
+mount at `/book/eng` and `/book/langs`. Open `.devcontainer` to onboard the
+module; the lab conductor builds this image and does not bind-mount API source
+in prod.
+
 ## Deployment
 
 Deployed to Cloudflare Workers. First-time setup:

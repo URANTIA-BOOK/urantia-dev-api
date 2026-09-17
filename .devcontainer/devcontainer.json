@@ -1,0 +1,21 @@
+{
+  "name": "urantia-dev-api",
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile",
+    "target": "dev"
+  },
+  "workspaceFolder": "/app",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+  "forwardPorts": [3000],
+  "remoteEnv": {
+    "PORT": "3000",
+    "BOOK_TREE": "/book/eng"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["oven.bun-vscode"]
+    }
+  },
+  "postCreateCommand": "bun install --frozen-lockfile"
+}
