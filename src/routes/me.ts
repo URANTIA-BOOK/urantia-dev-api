@@ -61,7 +61,7 @@ const updateProfileRoute = createRoute({
 	path: "/",
 	tags: ["User"],
 	summary: "Update user profile",
-	request: { body: { content: { "application/json": { schema: UserUpdate } } } },
+	request: { body: { required: true, content: { "application/json": { schema: UserUpdate } } } },
 	responses: {
 		200: { description: "Updated profile", content: { "application/json": { schema: z.object({ data: UserProfile }) } } },
 		401: { description: "Authentication required", content: { "application/json": { schema: ErrorResponse } } },
@@ -206,7 +206,7 @@ const createBookmarkRoute = createRoute({
 	tags: ["Bookmarks"],
 	summary: "Create a bookmark (idempotent)",
 	description: "Pass any paragraph reference format. If already bookmarked, updates the category and returns 200.",
-	request: { body: { content: { "application/json": { schema: BookmarkCreate } } } },
+	request: { body: { required: true, content: { "application/json": { schema: BookmarkCreate } } } },
 	responses: {
 		200: { description: "Bookmark already exists (updated category if provided)", content: { "application/json": { schema: z.object({ data: BookmarkResponse }) } } },
 		201: { description: "Bookmark created", content: { "application/json": { schema: z.object({ data: BookmarkResponse }) } } },
@@ -369,7 +369,7 @@ const createNoteRoute = createRoute({
 	tags: ["Notes"],
 	summary: "Create a note",
 	description: "Pass any paragraph reference format. Multiple notes per paragraph are allowed. Format: 'plain' (default) or 'markdown'.",
-	request: { body: { content: { "application/json": { schema: NoteCreate } } } },
+	request: { body: { required: true, content: { "application/json": { schema: NoteCreate } } } },
 	responses: {
 		201: { description: "Note created", content: { "application/json": { schema: z.object({ data: NoteResponse }) } } },
 		401: { description: "Authentication required", content: { "application/json": { schema: ErrorResponse } } },
@@ -416,7 +416,7 @@ const updateNoteRoute = createRoute({
 	path: "/notes/{id}",
 	tags: ["Notes"],
 	summary: "Update a note",
-	request: { params: z.object({ id: z.string().uuid() }), body: { content: { "application/json": { schema: NoteUpdate } } } },
+	request: { params: z.object({ id: z.string().uuid() }), body: { required: true, content: { "application/json": { schema: NoteUpdate } } } },
 	responses: {
 		200: { description: "Note updated", content: { "application/json": { schema: z.object({ data: NoteResponse }) } } },
 		401: { description: "Authentication required", content: { "application/json": { schema: ErrorResponse } } },
@@ -560,7 +560,7 @@ const markReadRoute = createRoute({
 	tags: ["Reading Progress"],
 	summary: "Mark paragraphs as read (batch, idempotent)",
 	description: "Pass an array of paragraph references in any format. Already-read paragraphs are silently skipped.",
-	request: { body: { content: { "application/json": { schema: ReadingProgressBatch } } } },
+	request: { body: { required: true, content: { "application/json": { schema: ReadingProgressBatch } } } },
 	responses: {
 		200: {
 			description: "Result",
@@ -668,7 +668,7 @@ const updatePreferencesRoute = createRoute({
 	path: "/preferences",
 	tags: ["Preferences"],
 	summary: "Update user preferences (shallow merge)",
-	request: { body: { content: { "application/json": { schema: PreferencesUpdate } } } },
+	request: { body: { required: true, content: { "application/json": { schema: PreferencesUpdate } } } },
 	responses: {
 		200: { description: "Updated preferences", content: { "application/json": { schema: z.object({ data: z.record(z.string(), z.unknown()) }) } } },
 		401: { description: "Authentication required", content: { "application/json": { schema: ErrorResponse } } },

@@ -487,6 +487,7 @@ Query is embedded via \`text-embedding-3-small\` (1536-d) and matched against \`
 Optional filters: \`canon\` (\`ot\`, \`deuterocanon\`, \`nt\`), \`bookCode\` (any OSIS/USFM/full-name/alias). \`urantiaParallelLimit\` controls how many UB paragraphs to attach per result (0-10, default 3). Set to 0 to suppress.`,
 	request: {
 		body: {
+			required: true,
 			content: { "application/json": { schema: BibleSemanticSearchRequest } },
 		},
 	},

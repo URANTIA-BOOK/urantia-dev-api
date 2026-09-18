@@ -68,6 +68,10 @@ async function handleFullTextSearch(c: AnyContext, params: SearchParams) {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { q, page, limit, paperId, partId, type, include } = params;
 
+	if (!q) {
+		return problemJson(c, 400, "Search query cannot be empty");
+	}
+
 	const sanitized = q.replace(/[^\w\s]/g, " ").trim();
 
 	if (!sanitized) {
@@ -180,6 +184,11 @@ async function handleSemanticSearch(c: AnyContext, params: SemanticSearchParams)
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const kv = c.env?.SEARCH_CACHE as KVNamespace | undefined;
 	const { q, page, limit, paperId, partId, include } = params;
+
+	if (!q) {
+		return problemJson(c, 400, "Search query cannot be empty");
+	}
+
 	const offset = page * limit;
 
 	const startEmbedding = performance.now();
@@ -362,6 +371,7 @@ const searchPostRoute = createRoute({
 	description: searchDescription,
 	request: {
 		body: {
+			required: true,
 			content: { "application/json": { schema: SearchRequest } },
 		},
 	},
@@ -406,6 +416,7 @@ const semanticSearchPostRoute = createRoute({
 	description: semanticSearchDescription,
 	request: {
 		body: {
+			required: true,
 			content: { "application/json": { schema: SemanticSearchRequest } },
 		},
 	},

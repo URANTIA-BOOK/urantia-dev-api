@@ -1,5 +1,6 @@
 import { createRoute } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
 import { SignJWT } from "jose";
 import { z } from "zod";
 import { getDb } from "../db/client.ts";
@@ -15,9 +16,24 @@ export const authRoute = createApp();
 // Helpers
 // ============================================================
 
+// The /auth/apps/ prefix is public (the consent screen reads app metadata), so
+// the write routes under it reach the handler unauthenticated. Answer 401 with
+// the same problem+json shape the auth middleware uses, never a 500.
 function getUser(c: { get: (key: "user") => AuthUser | null }): AuthUser {
 	const user = c.get("user");
-	if (!user) throw new Error("User not authenticated");
+	if (!user) {
+		throw new HTTPException(401, {
+			res: Response.json(
+				{
+					type: "https://urantia.dev/errors/unauthorized",
+					title: "Unauthorized",
+					status: 401,
+					detail: "Authentication required. Provide a valid Bearer token.",
+				},
+				{ status: 401, headers: { "Content-Type": "application/problem+json" } },
+			),
+		});
+	}
 	return user;
 }
 
@@ -258,7 +274,7 @@ const createAppRoute = createRoute({
 	path: "/apps",
 	tags: ["Auth"],
 	summary: "Register a new OAuth app",
-	request: { body: { content: { "application/json": { schema: AppCreateBody } } } },
+	request: { body: { required: true, content: { "application/json": { schema: AppCreateBody } } } },
 	responses: {
 		201: {
 			description: "App created (secret shown once)",
@@ -378,7 +394,7 @@ const authorizeRoute = createRoute({
 	path: "/authorize",
 	tags: ["Auth"],
 	summary: "Create an authorization code (authenticated user)",
-	request: { body: { content: { "application/json": { schema: AuthorizeBody } } } },
+	request: { body: { required: true, content: { "application/json": { schema: AuthorizeBody } } } },
 	responses: {
 		200: {
 			description: "Authorization code created",
@@ -483,7 +499,7 @@ const tokenRoute = createRoute({
 	path: "/token",
 	tags: ["Auth"],
 	summary: "Exchange authorization code for tokens",
-	request: { body: { content: { "application/json": { schema: TokenBody } } } },
+	request: { body: { required: true, content: { "application/json": { schema: TokenBody } } } },
 	responses: {
 		200: {
 			description: "Token response",
@@ -633,7 +649,7 @@ const refreshRoute = createRoute({
 	path: "/refresh",
 	tags: ["Auth"],
 	summary: "Exchange a refresh token for a new access token + refresh token",
-	request: { body: { content: { "application/json": { schema: RefreshBody } } } },
+	request: { body: { required: true, content: { "application/json": { schema: RefreshBody } } } },
 	responses: {
 		200: {
 			description: "New token pair",
@@ -919,7 +935,7 @@ const updateAppRoute = createRoute({
 	summary: "Update an OAuth app (owner-only)",
 	request: {
 		params: z.object({ id: z.string() }),
-		body: { content: { "application/json": { schema: AppUpdateBody } } },
+		body: { required: true, content: { "application/json": { schema: AppUpdateBody } } },
 	},
 	responses: {
 		200: {
@@ -1029,7 +1045,7 @@ const uploadLogoRoute = createRoute({
 	summary: "Upload an app logo (owner-only, max 2MB, PNG/JPEG/WebP)",
 	request: {
 		params: z.object({ id: z.string() }),
-		body: { content: { "multipart/form-data": { schema: z.object({ logo: z.any() }) } } },
+		body: { required: true, content: { "multipart/form-data": { schema: z.object({ logo: z.any() }) } } },
 	},
 	responses: {
 		200: {
