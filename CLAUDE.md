@@ -43,9 +43,11 @@ auth middleware is already wired up — stand up a new service.
   flags untouched files. Bump it only together with a deliberate repo-wide
   `bun run format`.
 - `overrides.yaml` forces the patched transitive `yaml` version.
-- Known baseline (pre-existing, not regressions): 4 typecheck errors in test
-  files and 43 Biome lint errors. Compare against this baseline before blaming
-  a change.
+- Known baseline (pre-existing, not regressions): 223 typecheck errors and 43
+  Biome lint errors, measured 2026-09-18 on a clean `main`. Most typecheck
+  errors are Hono handler return-type mismatches in `src/routes/*.ts` plus
+  `unknown` body types in the test files. Compare counts against this baseline
+  before blaming a change.
 
 ## Testing against production
 
