@@ -106,7 +106,7 @@ const getRandomRoute = createRoute({
 
 paragraphsRoute.openapi(getRandomRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
-	const { include, format, lang, minLength, maxLength } = c.req.valid("query");
+	const { include, format, lang, source, minLength, maxLength } = c.req.valid("query");
 
 	if (minLength && maxLength && minLength >= maxLength) {
 		return problemJson(c, 400, "minLength must be less than maxLength", "invalid-length-filter");
@@ -131,10 +131,9 @@ paragraphsRoute.openapi(getRandomRoute, async (c) => {
 		return problemJson(c, 400, "No paragraphs match the given length filters", "invalid-length-filter");
 	}
 
-	// Apply translations if lang specified
-	if (lang && lang !== "eng") {
-		result = await applyParagraphTranslations(db, result, lang);
-		result = await applyTitleTranslations(db, result, lang);
+	if ((lang && lang !== "eng") || source) {
+		result = await applyParagraphTranslations(db, result, lang ?? "eng", source);
+		result = await applyTitleTranslations(db, result, lang ?? "eng", source);
 	}
 
 	type Enriched = (typeof result)[number] & {
@@ -197,7 +196,7 @@ The format is auto-detected from the reference string.\n\nResponse includes a \`
 paragraphsRoute.openapi(getParagraphRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { ref } = c.req.valid("param");
-	const { include, format: outputFormat, lang } = c.req.valid("query");
+	const { include, format: outputFormat, lang, source } = c.req.valid("query");
 	const refFormat = detectRefFormat(ref);
 
 	if (refFormat === "unknown") {
@@ -210,10 +209,9 @@ paragraphsRoute.openapi(getParagraphRoute, async (c) => {
 		return problemJson(c, 404, `Paragraph "${ref}" not found`);
 	}
 
-	// Apply translations if lang specified
-	if (lang && lang !== "eng") {
-		result = await applyParagraphTranslations(db, result, lang);
-		result = await applyTitleTranslations(db, result, lang);
+	if ((lang && lang !== "eng") || source) {
+		result = await applyParagraphTranslations(db, result, lang ?? "eng", source);
+		result = await applyTitleTranslations(db, result, lang ?? "eng", source);
 	}
 
 	type Enriched = (typeof result)[number] & {
@@ -275,7 +273,7 @@ The \`window\` query parameter controls how many paragraphs before/after to incl
 paragraphsRoute.openapi(getParagraphContextRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { ref } = c.req.valid("param");
-	const { window: windowSize, include, lang } = c.req.valid("query");
+	const { window: windowSize, include, lang, source } = c.req.valid("query");
 	const format = detectRefFormat(ref);
 
 	if (format === "unknown") {
@@ -318,11 +316,20 @@ paragraphsRoute.openapi(getParagraphContextRoute, async (c) => {
 		.orderBy(paragraphs.sortId)
 		.limit(windowSize);
 
-	// Apply translations if lang specified
 	let allContextParagraphs = [targetParagraph, ...before, ...after];
-	if (lang && lang !== "eng") {
-		allContextParagraphs = await applyParagraphTranslations(db, allContextParagraphs, lang);
-		allContextParagraphs = await applyTitleTranslations(db, allContextParagraphs, lang);
+	if ((lang && lang !== "eng") || source) {
+		allContextParagraphs = await applyParagraphTranslations(
+			db,
+			allContextParagraphs,
+			lang ?? "eng",
+			source,
+		);
+		allContextParagraphs = await applyTitleTranslations(
+			db,
+			allContextParagraphs,
+			lang ?? "eng",
+			source,
+		);
 	}
 	const contextMap = new Map(allContextParagraphs.map((p) => [p.id, p]));
 	const translatedTarget = contextMap.get(targetParagraph.id)!;
