@@ -179,6 +179,70 @@ export function paragraphBodies(
 	return { text, htmlText };
 }
 
+export type TreeMetadata = {
+	languageCode: string;
+	regionCode: string | null;
+	versionId: string;
+	versionNumber: string | null;
+	pipelineVersion: number | null;
+	firstPublished: number | null;
+	copyrightYear: number | null;
+	editionNative: string | null;
+	editionEnglish: string | null;
+	bookTitle: string | null;
+	sourceFile: string | null;
+	sourceUrl: string | null;
+	sourceSha256: string | null;
+	sourceLayout: string | null;
+};
+
+function optionalString(value: unknown): string | null {
+	return nonempty(value) ? value : null;
+}
+
+function optionalInt(value: unknown): number | null {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim() !== "") {
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+	return null;
+}
+
+export function parseTreeMetadata(payload: unknown): TreeMetadata | null {
+	if (!payload || typeof payload !== "object") return null;
+	const raw = payload as Record<string, unknown>;
+	if (!nonempty(raw.language_code) || !nonempty(raw.version_id)) return null;
+	return {
+		languageCode: raw.language_code,
+		regionCode: optionalString(raw.region_code),
+		versionId: raw.version_id,
+		versionNumber: optionalString(raw.version_number),
+		pipelineVersion: optionalInt(raw.pipeline_version),
+		firstPublished: optionalInt(raw.first_published),
+		copyrightYear: optionalInt(raw.copyright_year),
+		editionNative: optionalString(raw.edition_native),
+		editionEnglish: optionalString(raw.edition_english),
+		bookTitle: optionalString(raw.book_title),
+		sourceFile: optionalString(raw.source_file),
+		sourceUrl: optionalString(raw.source_url),
+		sourceSha256: optionalString(raw.source_sha256),
+		sourceLayout: optionalString(raw.source_layout),
+	};
+}
+
+export function readTreeMetadata(source: string): TreeMetadata | null {
+	const path = join(source, "metadata.json");
+	if (!existsSync(path)) return null;
+	let payload: unknown;
+	try {
+		payload = JSON.parse(readFileSync(path, "utf-8"));
+	} catch {
+		return null;
+	}
+	return parseTreeMetadata(payload);
+}
+
 export function readMetadataParts(source: string): MetadataPart[] {
 	const path = join(source, "metadata.json");
 	if (!existsSync(path)) return [];

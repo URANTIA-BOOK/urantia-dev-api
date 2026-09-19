@@ -1,20 +1,17 @@
 import { createRoute } from "@hono/zod-openapi";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/client.ts";
-import { entityTranslations, paragraphTranslations } from "../db/schema.ts";
+import {
+	entityTranslations,
+	languages,
+	paragraphs,
+	paragraphTranslations,
+	translationSources,
+} from "../db/schema.ts";
 import { createApp } from "../lib/app.ts";
 import { ErrorResponse, LanguagesResponse } from "../validators/schemas.ts";
 
 export const languagesRoute = createApp();
-
-const LANG_NAMES: Record<string, string> = {
-	eng: "English",
-	es: "Spanish",
-	fr: "French",
-	pt: "Portuguese",
-	de: "German",
-	ko: "Korean",
-};
 
 const listLanguagesRoute = createRoute({
 	operationId: "listLanguages",
@@ -23,10 +20,10 @@ const listLanguagesRoute = createRoute({
 	tags: ["Languages"],
 	summary: "List available languages",
 	description:
-		"Returns available languages with translation progress (entity and paragraph counts).",
+		"Returns seeded languages and their translation sources, with paragraph and entity counts.",
 	responses: {
 		200: {
-			description: "Available languages with translation counts",
+			description: "Available languages with sources and counts",
 			content: { "application/json": { schema: LanguagesResponse } },
 		},
 		500: {
@@ -39,7 +36,13 @@ const listLanguagesRoute = createRoute({
 languagesRoute.openapi(listLanguagesRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 
-	// Count entity translations per language
+	const langRows = await db
+		.select()
+		.from(languages)
+		.orderBy(languages.sortId);
+
+	const sourceRows = await db.select().from(translationSources);
+
 	const entityCounts = await db
 		.select({
 			language: entityTranslations.language,
@@ -48,25 +51,62 @@ languagesRoute.openapi(listLanguagesRoute, async (c) => {
 		.from(entityTranslations)
 		.groupBy(entityTranslations.language);
 
-	// Count paragraph translations per language
 	const paragraphCounts = await db
 		.select({
-			language: paragraphTranslations.language,
+			sourceId: paragraphTranslations.sourceId,
 			count: sql<number>`count(*)`,
 		})
 		.from(paragraphTranslations)
-		.groupBy(paragraphTranslations.language);
+		.groupBy(paragraphTranslations.sourceId);
+
+	const [englishRow] = await db
+		.select({ count: sql<number>`count(*)` })
+		.from(paragraphs);
 
 	const entityMap = new Map(entityCounts.map((e) => [e.language, Number(e.count)]));
-	const paragraphMap = new Map(paragraphCounts.map((p) => [p.language, Number(p.count)]));
+	const paraBySource = new Map(
+		paragraphCounts.map((p) => [p.sourceId, Number(p.count)]),
+	);
+	const englishCount = Number(englishRow?.count ?? 0);
 
-	// Build response for all supported languages
-	const data = Object.entries(LANG_NAMES).map(([code, name]) => ({
-		code,
-		name,
-		entityCount: entityMap.get(code) ?? 0,
-		paragraphCount: paragraphMap.get(code) ?? 0,
-	}));
+	const data = langRows.map((lang) => {
+		const sources = sourceRows
+			.filter((source) => source.languageCode === lang.code)
+			.map((source) => {
+				const paragraphCount =
+					lang.code === "eng" && paraBySource.get(source.id) == null
+						? englishCount
+						: (paraBySource.get(source.id) ?? 0);
+				return {
+					id: source.id,
+					treeSlug: source.treeSlug,
+					versionNumber: source.versionNumber,
+					editionNative: source.editionNative,
+					editionEnglish: source.editionEnglish,
+					bookTitle: source.bookTitle,
+					regionCode: source.regionCode,
+					firstPublished: source.firstPublished,
+					copyrightYear: source.copyrightYear,
+					isPrimary: source.isPrimary,
+					paragraphCount,
+				};
+			})
+			.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+		const primary = sources.find((source) => source.isPrimary);
+		const overlayCount = sources.reduce((sum, source) => sum + source.paragraphCount, 0);
+		return {
+			code: lang.code,
+			slug: lang.slug,
+			bcp47: lang.bcp47,
+			name: lang.uiLabel,
+			uiLabel: lang.uiLabel,
+			uiLabelEnglish: lang.uiLabelEnglish,
+			entityCount: entityMap.get(lang.code) ?? 0,
+			paragraphCount:
+				lang.code === "eng" ? englishCount : (primary?.paragraphCount ?? overlayCount),
+			sources,
+		};
+	});
 
 	return c.json({ data }, 200);
 });

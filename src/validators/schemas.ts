@@ -2,10 +2,14 @@ import { z } from "zod";
 
 // --- Supported languages ---
 
-export const SupportedLanguage = z.enum(["eng", "es", "fr", "pt", "de", "ko"]).default("eng");
+export const SupportedLanguage = z
+	.string()
+	.regex(/^[a-z]{2,8}$/)
+	.default("eng");
 
 export const LangQuery = z.object({
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 });
 
 // --- Shared response schemas ---
@@ -340,18 +344,21 @@ export const ContextQuery = z.object({
 	include: z.string().optional(),
 	format: FormatEnum.optional(),
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 });
 
 export const IncludeQuery = z.object({
 	include: z.string().optional(),
 	format: FormatEnum.optional(),
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 });
 
 export const RandomQuery = z.object({
 	include: z.string().optional(),
 	format: FormatEnum.optional(),
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 	minLength: z.coerce.number().int().min(1).optional(),
 	maxLength: z.coerce.number().int().min(1).optional(),
 });
@@ -375,6 +382,7 @@ export const EntitiesListQuery = z.object({
 	type: z.enum(["being", "place", "order", "race", "religion", "concept"]).optional(),
 	q: z.string().max(200).optional(),
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 });
 
 export const EntityIdParam = z.object({ id: z.string() });
@@ -383,6 +391,7 @@ export const EntityParagraphsQuery = z.object({
 	page: z.coerce.number().int().min(0).default(0),
 	limit: z.coerce.number().int().min(1).max(100).default(20),
 	lang: SupportedLanguage.optional(),
+	source: z.string().min(1).max(120).optional(),
 });
 
 export const EntitiesListResponse = z.object({
@@ -399,11 +408,30 @@ export const EntityParagraphsResponse = z.object({
 
 // --- Languages ---
 
+export const TranslationSourceSchema = z.object({
+	id: z.string(),
+	treeSlug: z.string(),
+	versionNumber: z.string().nullable(),
+	editionNative: z.string().nullable(),
+	editionEnglish: z.string().nullable(),
+	bookTitle: z.string().nullable(),
+	regionCode: z.string().nullable(),
+	firstPublished: z.number().int().nullable(),
+	copyrightYear: z.number().int().nullable(),
+	isPrimary: z.boolean(),
+	paragraphCount: z.number().int(),
+});
+
 export const LanguageSchema = z.object({
 	code: z.string(),
+	slug: z.string(),
+	bcp47: z.string(),
 	name: z.string(),
+	uiLabel: z.string(),
+	uiLabelEnglish: z.string(),
 	entityCount: z.number().int(),
 	paragraphCount: z.number().int(),
+	sources: z.array(TranslationSourceSchema),
 });
 
 export const LanguagesResponse = z.object({

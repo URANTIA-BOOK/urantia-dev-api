@@ -10,7 +10,9 @@ import {
 	timestamp,
 	uniqueIndex,
 	uuid,
+	boolean,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const tsvector = customType<{ data: string }>({
 	dataType() {
@@ -223,15 +225,66 @@ export const paragraphEntities = pgTable(
 	],
 );
 
+// --- languages (one selectable language; UI labels injected at seed) ---
+export const languages = pgTable(
+	"languages",
+	{
+		code: text("code").primaryKey(), // API ?lang= value: eng, es, fr, de
+		slug: text("slug").notNull(), // pipeline language_code: eng, spa, fre, ger
+		bcp47: text("bcp47").notNull(), // html lang: en, es, fr, de
+		uiLabel: text("ui_label").notNull(),
+		uiLabelEnglish: text("ui_label_english").notNull(),
+		sortId: text("sort_id").notNull(),
+	},
+	(t) => [uniqueIndex("languages_slug_idx").on(t.slug)],
+);
+
+// --- translation_sources (one row per language-tree metadata.json) ---
+export const translationSources = pgTable(
+	"translation_sources",
+	{
+		id: text("id").primaryKey(), // metadata version_id
+		languageCode: text("language_code")
+			.notNull()
+			.references(() => languages.code),
+		treeSlug: text("tree_slug").notNull(),
+		versionNumber: text("version_number"),
+		pipelineVersion: integer("pipeline_version"),
+		regionCode: text("region_code"),
+		firstPublished: integer("first_published"),
+		copyrightYear: integer("copyright_year"),
+		editionNative: text("edition_native"),
+		editionEnglish: text("edition_english"),
+		bookTitle: text("book_title"),
+		sourceFile: text("source_file"),
+		sourceUrl: text("source_url"),
+		sourceSha256: text("source_sha256"),
+		sourceLayout: text("source_layout"),
+		isPrimary: boolean("is_primary").notNull().default(true),
+	},
+	(t) => [
+		index("translation_sources_language_idx").on(t.languageCode),
+		index("translation_sources_tree_slug_idx").on(t.treeSlug),
+		uniqueIndex("translation_sources_one_primary_idx")
+			.on(t.languageCode)
+			.where(sql`${t.isPrimary} = true`),
+	],
+);
+
 // --- paragraph_translations ---
 export const paragraphTranslations = pgTable(
 	"paragraph_translations",
 	{
-		id: text("id").primaryKey(), // "{paragraphId}:{lang}:v{version}"
+		id: text("id").primaryKey(), // "{paragraphId}:{sourceId}"
 		paragraphId: text("paragraph_id")
 			.notNull()
 			.references(() => paragraphs.id),
-		language: text("language").notNull(), // ISO 639-1: "es", "fr", "pt", "de", "ko"
+		sourceId: text("source_id")
+			.notNull()
+			.references(() => translationSources.id),
+		language: text("language")
+			.notNull()
+			.references(() => languages.code), // denorm of languages.code for ?lang=
 		version: integer("version").notNull().default(1),
 		text: text("text").notNull(),
 		htmlText: text("html_text").notNull(),
@@ -240,13 +293,10 @@ export const paragraphTranslations = pgTable(
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 	},
 	(t) => [
-		uniqueIndex("pt_paragraph_lang_version_idx").on(
-			t.paragraphId,
-			t.language,
-			t.version,
-		),
+		uniqueIndex("pt_paragraph_source_idx").on(t.paragraphId, t.sourceId),
 		index("pt_language_idx").on(t.language),
 		index("pt_paragraph_id_idx").on(t.paragraphId),
+		index("pt_source_id_idx").on(t.sourceId),
 	],
 );
 
@@ -254,10 +304,15 @@ export const paragraphTranslations = pgTable(
 export const titleTranslations = pgTable(
 	"title_translations",
 	{
-		id: text("id").primaryKey(), // "{sourceType}:{sourceId}:{lang}:v{version}"
+		id: text("id").primaryKey(), // "{sourceType}:{sourceId}:{translationSourceId}"
 		sourceType: text("source_type").notNull(), // "paper" | "section" | "part" | "partSponsorship"
 		sourceId: text("source_id").notNull(), // paper.id or section.id
-		language: text("language").notNull(),
+		translationSourceId: text("translation_source_id")
+			.notNull()
+			.references(() => translationSources.id),
+		language: text("language")
+			.notNull()
+			.references(() => languages.code),
 		version: integer("version").notNull().default(1),
 		title: text("title").notNull(),
 		source: text("source").notNull().default("urantia.dev"),
@@ -265,14 +320,14 @@ export const titleTranslations = pgTable(
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 	},
 	(t) => [
-		uniqueIndex("tt_type_source_lang_version_idx").on(
+		uniqueIndex("tt_type_source_edition_idx").on(
 			t.sourceType,
 			t.sourceId,
-			t.language,
-			t.version,
+			t.translationSourceId,
 		),
 		index("tt_language_idx").on(t.language),
 		index("tt_source_type_id_idx").on(t.sourceType, t.sourceId),
+		index("tt_translation_source_idx").on(t.translationSourceId),
 	],
 );
 

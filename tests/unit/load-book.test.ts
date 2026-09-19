@@ -9,6 +9,7 @@ import {
 	paragraphBodies,
 	partTranslationRows,
 	readMetadataParts,
+	parseTreeMetadata,
 	rowsOf,
 	summarizeBook,
 } from "../../scripts/load-book.ts";
@@ -53,6 +54,34 @@ describe("envelopeOf", () => {
 
 	it("returns null for a retired array", () => {
 		expect(envelopeOf([])).toBeNull();
+	});
+});
+
+describe("parseTreeMetadata", () => {
+	it("injects pipeline slugs and edition lines from metadata.json", () => {
+		const meta = parseTreeMetadata({
+			language_code: "spa",
+			region_code: "419",
+			version_id: "UF-SPA-419-1993-1.9",
+			version_number: "1.9",
+			pipeline_version: 2,
+			first_published: 1993,
+			copyright_year: 1993,
+			edition_native: "Traducción al español",
+			edition_english: "Spanish Translation (Latin American Edition), 2024 Release",
+			book_title: "El Libro de Urantia",
+			source_file: "uf-spa-419-1993-1.9.md",
+		});
+		expect(meta).toMatchObject({
+			languageCode: "spa",
+			versionId: "UF-SPA-419-1993-1.9",
+			editionEnglish: "Spanish Translation (Latin American Edition), 2024 Release",
+			bookTitle: "El Libro de Urantia",
+		});
+	});
+
+	it("requires language_code and version_id", () => {
+		expect(parseTreeMetadata({ language_code: "spa" })).toBeNull();
 	});
 });
 
