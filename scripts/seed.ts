@@ -7,10 +7,12 @@ import { paragraphs, papers, parts, sections } from "../src/db/schema.ts";
 import {
 	loadBook,
 	paragraphBodies,
+	readTreeMetadata,
 	resolveBookSource,
 	sortedPaperIds,
 	summarizeBook,
 } from "./load-book.ts";
+import { upsertTranslationSource } from "./translation-source.ts";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -73,6 +75,12 @@ async function seed() {
 
 	const client = postgres(DATABASE_URL!);
 	const db = drizzle(client);
+
+	const meta = readTreeMetadata(book.source);
+	if (meta) {
+		const catalog = await upsertTranslationSource(db, meta, book.source);
+		console.log(`  language ${catalog.languageCode} source ${catalog.sourceId}`);
+	}
 
 	console.log("\n--- Seeding parts ---");
 	for (const partNode of book.parts) {
