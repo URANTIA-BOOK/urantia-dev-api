@@ -195,7 +195,7 @@ const getEntityParagraphsRoute = createRoute({
 entitiesRoute.openapi(getEntityParagraphsRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { id } = c.req.valid("param");
-	const { page, limit, lang } = c.req.valid("query");
+	const { page, limit, lang, source } = c.req.valid("query");
 	const offset = page * limit;
 
 	// Verify entity exists
@@ -231,9 +231,10 @@ entitiesRoute.openapi(getEntityParagraphsRoute, async (c) => {
 
 
 	// Apply paragraph translations if lang specified
-	const translatedResults = (lang && lang !== "eng")
-		? await applyParagraphTranslations(db, results, lang)
-		: results;
+	const translatedResults =
+		(lang && lang !== "eng") || source
+			? await applyParagraphTranslations(db, results, lang ?? "eng", source)
+			: results;
 
 	return c.json(
 		{

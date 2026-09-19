@@ -14,7 +14,7 @@ const getTocRoute = createRoute({
 	tags: ["Table of Contents"],
 	summary: "Get the full table of contents",
 	description:
-		"Returns the complete table of contents with parts and their papers. This is typically the first endpoint an AI agent should call to understand the book structure.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official part titles, sponsorship, and paper titles from that language tree's metadata.json when they have been seeded.",
+		"Returns the complete table of contents with parts and their papers. This is typically the first endpoint an AI agent should call to understand the book structure.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official part titles, sponsorship, and paper titles from that language tree's metadata.json when they have been seeded. Use `?source=` to pick a non-primary edition of that language.",
 	request: {
 		query: LangQuery,
 	},
@@ -32,18 +32,20 @@ const getTocRoute = createRoute({
 
 tocRoute.openapi(getTocRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
-	const { lang } = c.req.valid("query");
+	const { lang, source } = c.req.valid("query");
 
 	const allParts = await applyPartOverlays(
 		db,
 		await db.select().from(parts).orderBy(parts.sortId),
 		lang ?? "eng",
+		source,
 	);
 
 	const allPapers = await applyPaperTitles(
 		db,
 		await db.select().from(papers).orderBy(papers.sortId),
 		lang ?? "eng",
+		source,
 	);
 
 	const tocParts = allParts.map((part) => ({

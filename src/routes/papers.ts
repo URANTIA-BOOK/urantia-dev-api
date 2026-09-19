@@ -34,7 +34,7 @@ const listPapersRoute = createRoute({
 	tags: ["Papers"],
 	summary: "List all 197 papers",
 	description:
-		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official paper titles when they have been seeded.",
+		"Returns metadata for all papers in the Urantia Book, ordered by paper number.\n\nUse `?include=topEntities` to attach a per-paper aggregate of the most-referenced named entities (beings, places, concepts, etc.) sorted by citation frequency.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official paper titles when they have been seeded. Use `?source=` to pick a non-primary edition of that language.",
 	request: {
 		query: IncludeQuery,
 	},
@@ -52,7 +52,7 @@ const listPapersRoute = createRoute({
 
 papersRoute.openapi(listPapersRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
-	const { include, lang } = c.req.valid("query");
+	const { include, lang, source } = c.req.valid("query");
 
 	const allPapers = await applyPaperTitles(
 		db,
@@ -68,6 +68,7 @@ papersRoute.openapi(listPapersRoute, async (c) => {
 			.from(papers)
 			.orderBy(papers.sortId),
 		lang ?? "eng",
+		source,
 	);
 
 	if (wantsTopEntities(include)) {
@@ -107,7 +108,7 @@ const getPaperRoute = createRoute({
 	tags: ["Papers"],
 	summary: "Get a paper with all its paragraphs",
 	description:
-		"Returns a single paper's metadata along with all its paragraphs in order. Paper IDs range from 0 (Foreword) to 196.\n\nUse `?include=entities` to include typed entity mentions in each paragraph.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official translation companions when they have been seeded.",
+		"Returns a single paper's metadata along with all its paragraphs in order. Paper IDs range from 0 (Foreword) to 196.\n\nUse `?include=entities` to include typed entity mentions in each paragraph.\n\nUse `?lang=es` (or fr, de, pt, ko) to overlay official translation companions when they have been seeded. Use `?source=` to pick a non-primary edition of that language.",
 	request: {
 		params: PaperIdParam,
 		query: IncludeQuery,
@@ -131,7 +132,7 @@ const getPaperRoute = createRoute({
 papersRoute.openapi(getPaperRoute, async (c) => {
 	const { db } = getDb(c.env?.HYPERDRIVE);
 	const { id } = c.req.valid("param");
-	const { include, lang } = c.req.valid("query");
+	const { include, lang, source } = c.req.valid("query");
 
 	const paper = await db
 		.select({
@@ -181,9 +182,19 @@ papersRoute.openapi(getPaperRoute, async (c) => {
 	let responseParagraphs = paperParagraphs;
 	let paperRow = paper[0]!;
 
-	if (lang && lang !== "eng") {
-		responseParagraphs = await applyParagraphTranslations(db, responseParagraphs, lang);
-		responseParagraphs = await applyTitleTranslations(db, responseParagraphs, lang);
+	if ((lang && lang !== "eng") || source) {
+		responseParagraphs = await applyParagraphTranslations(
+			db,
+			responseParagraphs,
+			lang ?? "eng",
+			source,
+		);
+		responseParagraphs = await applyTitleTranslations(
+			db,
+			responseParagraphs,
+			lang ?? "eng",
+			source,
+		);
 		const translatedTitle = responseParagraphs[0]?.paperTitle;
 		if (translatedTitle) {
 			paperRow = { ...paperRow, title: translatedTitle };
