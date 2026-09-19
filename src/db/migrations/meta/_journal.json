@@ -92,6 +92,13 @@
       "when": 1777903793544,
       "tag": "0012_rapid_young_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779220000000,
+      "tag": "0013_translation_sources",
+      "breakpoints": true
     }
   ]
 }
